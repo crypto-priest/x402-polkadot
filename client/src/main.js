@@ -11,87 +11,58 @@ const apiService = new APIService(SERVER_URL, logger);
 
 let currentPaymentRequirements = null;
 
-function showPageLoader(message = 'Loading...') {
-  const loader = document.createElement('div');
-  loader.id = 'page-loader';
-  loader.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    z-index: 10002;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  `;
+function showPageLoader(msg = 'Loading...') {
+  const overlay = document.createElement('div');
+  overlay.id = 'page-loader';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10002;display:flex;align-items:center;justify-content:center;';
 
-  loader.innerHTML = `
-    <div style="background: #ffffff; padding: 40px 50px; border-radius: 12px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
-      <div style="width: 50px; height: 50px; border: 4px solid #e0e0e0; border-top-color: #2A5244; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
-      <div style="color: #2A5244; font-weight: 600; font-size: 18px; margin-bottom: 8px;">${message}</div>
-      <div style="color: #666; font-size: 14px;">Please wait...</div>
+  overlay.innerHTML = `
+    <div style="background:#fff;padding:40px;border-radius:12px;text-align:center;">
+      <div style="width:50px;height:50px;border:4px solid #e0e0e0;border-top-color:#2A5244;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px;"></div>
+      <div style="color:#2A5244;font-weight:600;font-size:18px;margin-bottom:8px;">${msg}</div>
+      <div style="color:#666;font-size:14px;">Please wait...</div>
     </div>
   `;
 
-  document.body.appendChild(loader);
+  if (!document.querySelector('#loader-spin')) {
+    const style = document.createElement('style');
+    style.id = 'loader-spin';
+    style.textContent = '@keyframes spin { to { transform: rotate(360deg); }}';
+    document.head.appendChild(style);
+  }
 
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  `;
-  document.head.appendChild(style);
+  document.body.appendChild(overlay);
 }
 
 function hidePageLoader() {
-  const loader = document.getElementById('page-loader');
-  if (loader) {
-    loader.style.opacity = '0';
-    loader.style.transition = 'opacity 0.3s';
-    setTimeout(() => loader.remove(), 300);
+  const el = document.getElementById('page-loader');
+  if (el) {
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 0.3s';
+    setTimeout(() => el.remove(), 300);
   }
 }
 
-function showNotification(message, type = 'error') {
-  const notification = document.createElement('div');
-  notification.style.cssText = `
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: #ffffff;
-    padding: 25px 30px;
-    border-radius: 10px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-    z-index: 10001;
-    max-width: 400px;
-    border-left: 4px solid ${type === 'error' ? '#c62828' : '#2A5244'};
-    animation: fadeIn 0.2s ease-out;
-  `;
+function showNotification(msg, type = 'error') {
+  const notif = document.createElement('div');
+  const color = type === 'error' ? '#c62828' : '#2A5244';
+  notif.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:25px 30px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.2);z-index:10001;max-width:400px;border-left:4px solid ${color};`;
 
-  notification.innerHTML = `
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <div style="font-size: 24px;">${type === 'error' ? '⚠️' : 'ℹ️'}</div>
+  notif.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="font-size:24px;">${type === 'error' ? '⚠️' : 'ℹ️'}</div>
       <div>
-        <div style="color: ${type === 'error' ? '#c62828' : '#2A5244'}; font-weight: 600; font-size: 16px; margin-bottom: 4px;">
-          ${type === 'error' ? 'Error' : 'Notice'}
-        </div>
-        <div style="color: #1a1a1a; font-size: 14px; line-height: 1.5;">
-          ${message}
-        </div>
+        <div style="color:${color};font-weight:600;font-size:16px;margin-bottom:4px;">${type === 'error' ? 'Error' : 'Notice'}</div>
+        <div style="color:#1a1a1a;font-size:14px;">${msg}</div>
       </div>
     </div>
   `;
 
-  document.body.appendChild(notification);
-
+  document.body.appendChild(notif);
   setTimeout(() => {
-    notification.style.opacity = '0';
-    notification.style.transition = 'opacity 0.2s';
-    setTimeout(() => notification.remove(), 200);
+    notif.style.opacity = '0';
+    notif.style.transition = 'opacity 0.2s';
+    setTimeout(() => notif.remove(), 200);
   }, 3000);
 }
 
@@ -169,77 +140,54 @@ async function testPaid() {
 
 async function showAutoPaymentWarning(requirements) {
   if (!walletService.isConnected()) {
-    logger.error('Wallet not connected. Please load wallet first.');
+    logger.error('Wallet not connected');
     showNotification('Please load wallet first!', 'error');
     return;
   }
 
-  const amountInDOT = (requirements.amount / 10_000_000_000).toFixed(2);
-
+  const amount = (requirements.amount / 10_000_000_000).toFixed(2);
   const popup = document.createElement('div');
   popup.id = 'payment-popup';
-  popup.style.cssText = `
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: #ffffff;
-    padding: 35px;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-    z-index: 10000;
-    max-width: 650px;
-    border: 2px solid #2A5244;
-  `;
+  popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:35px;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.2);z-index:10000;max-width:650px;border:2px solid #2A5244;';
 
   popup.innerHTML = `
     <div>
-      <h2 style="color: #2A5244; margin: 0 0 10px 0; font-size: 22px;">API Payment Request</h2>
-      <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-          <span style="color: #666; font-weight: 500;">Amount:</span>
-          <span style="color: #1a1a1a; font-weight: 600;">${amountInDOT} PAS</span>
+      <h2 style="color:#2A5244;margin:0 0 10px 0;font-size:22px;">Payment Required</h2>
+      <div style="background:#f5f5f5;padding:15px;border-radius:8px;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+          <span style="color:#666;font-weight:500;">Amount:</span>
+          <span style="color:#1a1a1a;font-weight:600;">${amount} PAS</span>
         </div>
-        <div style="margin-bottom: 0;">
-          <div style="color: #666; font-weight: 500; margin-bottom: 4px;">Recipient Address:</div>
-          <div style="color: #1a1a1a; font-weight: 600; font-size: 13px; font-family: 'SF Mono', 'Monaco', 'Courier New', monospace; word-break: break-all; background: #fff; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0;">${requirements.recipient}</div>
+        <div>
+          <div style="color:#666;font-weight:500;margin-bottom:4px;">To:</div>
+          <div style="color:#1a1a1a;font-weight:600;font-size:13px;font-family:monospace;word-break:break-all;background:#fff;padding:8px;border-radius:4px;border:1px solid #e0e0e0;">${requirements.recipient}</div>
         </div>
       </div>
-      <div id="payment-status" style="background: #fafafa; padding: 15px; border-radius: 8px; margin-bottom: 15px; min-height: 100px; max-height: 200px; overflow-y: auto;"></div>
-      <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; border-radius: 4px; font-size: 13px; color: #856404;">
-        <strong>Demo Mode:</strong> This popup shows the payment flow for demonstration. In production, these steps happen automatically in the background without user interaction.
+      <div id="payment-status" style="background:#fafafa;padding:15px;border-radius:8px;margin-bottom:15px;min-height:100px;max-height:200px;overflow-y:auto;"></div>
+      <div style="background:#fff3cd;border-left:4px solid #ffc107;padding:12px;border-radius:4px;font-size:13px;color:#856404;">
+        <strong>Demo:</strong> In production this happens automatically in the background.
       </div>
     </div>
   `;
 
   document.body.appendChild(popup);
-
   await autoProcessPayment(requirements, popup);
 }
 
-function updatePaymentStatus(status, isComplete = false, isError = false) {
-  const statusContainer = document.getElementById('payment-status');
-  if (!statusContainer) return;
+function updatePaymentStatus(status, done = false, err = false) {
+  const container = document.getElementById('payment-status');
+  if (!container) return;
 
-  const statusItem = document.createElement('div');
-  statusItem.className = 'status-item';
-  statusItem.style.cssText = `
-    color: ${isError ? '#c62828' : isComplete ? '#2e7d32' : '#1a1a1a'};
-    font-weight: ${isComplete || isError ? '600' : '500'};
-    margin: 8px 0;
-    font-size: 14px;
-    padding: 8px 12px;
-    background: ${isError ? '#ffebee' : isComplete ? '#e8f5e9' : '#f5f5f5'};
-    border-radius: 6px;
-    border-left: 3px solid ${isError ? '#c62828' : isComplete ? '#2e7d32' : '#2A5244'};
-  `;
+  const item = document.createElement('div');
+  const color = err ? '#c62828' : done ? '#2e7d32' : '#1a1a1a';
+  const bg = err ? '#ffebee' : done ? '#e8f5e9' : '#f5f5f5';
+  const icon = err ? 'X' : done ? '✓' : '›';
 
-  const icon = isError ? 'X' : isComplete ? 'OK' : '>';
-  statusItem.innerHTML = `<span style="margin-right: 8px; font-weight: bold;">${icon}</span>${status}`;
+  item.style.cssText = `color:${color};font-weight:${done||err?'600':'500'};margin:8px 0;font-size:14px;padding:8px 12px;background:${bg};border-radius:6px;border-left:3px solid ${color};`;
+  item.innerHTML = `<span style="margin-right:8px;font-weight:bold;">${icon}</span>${status}`;
 
-  statusContainer.appendChild(statusItem);
-
-  statusContainer.scrollTop = statusContainer.scrollHeight;
+  container.appendChild(item);
+  container.scrollTop = container.scrollHeight;
 }
 
 async function autoProcessPayment(requirements, popup) {

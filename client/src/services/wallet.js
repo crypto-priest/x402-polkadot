@@ -12,124 +12,92 @@ class WalletService {
 
   async connect() {
     try {
-      this.logger.info('Initializing wallet from mnemonic...');
+      this.logger.info('Loading wallet...');
 
-      // Wait for crypto libraries to be ready
       await cryptoWaitReady();
 
-      // Get mnemonic from environment
       const mnemonic = import.meta.env.VITE_SIGNER_MNEMONIC;
       if (!mnemonic) {
-        throw new Error('VITE_SIGNER_MNEMONIC not found in environment variables');
+        throw new Error('Mnemonic not found in .env');
       }
 
-      // Create keyring and add account from mnemonic
       const keyring = new Keyring({ type: 'sr25519' });
       this.keypair = keyring.addFromMnemonic(mnemonic);
 
-      // Connect to Polkadot network
       const rpcUrl = this.getRpcUrl();
-      this.logger.info(`Connecting to ${this.network} network: ${rpcUrl}`);
+      this.logger.info(`Connecting to ${this.network}`);
 
       const provider = new WsProvider(rpcUrl);
       this.api = await ApiPromise.create({ provider });
 
-      this.logger.success(`Wallet initialized: ${this.formatAddress(this.keypair.address)}`);
-      this.logger.info(`Network: ${this.network}`);
+      this.logger.success(`Connected: ${this.formatAddress(this.keypair.address)}`);
 
-      // Fetch initial balance
       await this.fetchBalance();
 
-      // Fetch receiver balance
-      const receiverAddress = document.getElementById('receiver-address')?.textContent;
-      if (receiverAddress) {
-        await this.fetchReceiverBalance(receiverAddress);
+      const receiverAddr = document.getElementById('receiver-address')?.textContent;
+      if (receiverAddr) {
+        await this.fetchReceiverBalance(receiverAddr);
       }
 
-      return {
-        address: this.keypair.address,
-        meta: { name: 'Mnemonic Account' }
-      };
+      return { address: this.keypair.address };
     } catch (error) {
-      this.logger.error(`Wallet initialization failed: ${error.message}`);
+      this.logger.error(`Failed: ${error.message}`);
       throw error;
     }
   }
 
   async fetchBalance() {
-    if (!this.keypair || !this.api) {
-      this.logger.error('Wallet not initialized');
-      return;
-    }
+    if (!this.keypair || !this.api) return;
 
     try {
-      this.logger.info('Fetching DOT balance...');
+      this.logger.info('Fetching balance...');
 
-      // Get account balance
       const { data: balance } = await this.api.query.system.account(this.keypair.address);
+      const amount = (balance.free.toBigInt() / BigInt(10**10)).toString();
+      const formatted = `${amount} PAS`;
 
-      // Convert from plancks to DOT (1 DOT = 10^10 plancks for Polkadot/Paseo)
-      const dotBalance = (balance.free.toBigInt() / BigInt(10**10)).toString();
-      const dotBalanceFormatted = `${dotBalance} PAS`;
+      const balanceEl = document.getElementById('dot-balance');
+      if (balanceEl) balanceEl.textContent = formatted;
 
-      // Update UI
-      const dotBalanceEl = document.getElementById('dot-balance');
-      if (dotBalanceEl) {
-        dotBalanceEl.textContent = dotBalanceFormatted;
-      }
+      const addressEl = document.getElementById('wallet-address');
+      if (addressEl) addressEl.textContent = this.keypair.address;
 
-      const walletAddressEl = document.getElementById('wallet-address');
-      if (walletAddressEl) {
-        walletAddressEl.textContent = this.keypair.address;
-      }
-
-      this.logger.success(`Balance: ${dotBalanceFormatted}`);
+      this.logger.success(`Balance: ${formatted}`);
     } catch (error) {
-      this.logger.error(`Failed to fetch balance: ${error.message}`);
-      const dotBalanceEl = document.getElementById('dot-balance');
-      if (dotBalanceEl) {
-        dotBalanceEl.textContent = 'Error';
-      }
+      this.logger.error(`Balance fetch failed: ${error.message}`);
+      const el = document.getElementById('dot-balance');
+      if (el) el.textContent = 'Error';
     }
   }
 
   async getBalanceForAddress(address) {
-    if (!this.api) {
-      throw new Error('Wallet not initialized');
-    }
+    if (!this.api) throw new Error('API not ready');
 
     try {
       const { data: balance } = await this.api.query.system.account(address);
-      const dotBalance = (balance.free.toBigInt() / BigInt(10**10)).toString();
-      return `${dotBalance} PAS`;
+      const amount = (balance.free.toBigInt() / BigInt(10**10)).toString();
+      return `${amount} PAS`;
     } catch (error) {
-      this.logger.error(`Failed to fetch balance for ${address}: ${error.message}`);
+      this.logger.error(`Balance fetch failed: ${error.message}`);
       return 'Error';
     }
   }
 
   async fetchReceiverBalance(address) {
-    if (!this.api) {
-      this.logger.error('Wallet not initialized');
-      return;
-    }
+    if (!this.api) return;
 
     try {
       this.logger.info('Fetching receiver balance...');
       const balance = await this.getBalanceForAddress(address);
 
-      const receiverBalanceEl = document.getElementById('receiver-balance');
-      if (receiverBalanceEl) {
-        receiverBalanceEl.textContent = balance;
-      }
+      const el = document.getElementById('receiver-balance');
+      if (el) el.textContent = balance;
 
-      this.logger.success(`Receiver balance: ${balance}`);
+      this.logger.success(`Receiver: ${balance}`);
     } catch (error) {
-      this.logger.error(`Failed to fetch receiver balance: ${error.message}`);
-      const receiverBalanceEl = document.getElementById('receiver-balance');
-      if (receiverBalanceEl) {
-        receiverBalanceEl.textContent = 'Error';
-      }
+      this.logger.error(`Receiver balance failed: ${error.message}`);
+      const el = document.getElementById('receiver-balance');
+      if (el) el.textContent = 'Error';
     }
   }
 
@@ -142,35 +110,23 @@ class WalletService {
     return rpcUrls[this.network] || rpcUrls.paseo;
   }
 
-  async signTransaction(transaction) {
-    if (!this.keypair || !this.api) {
-      throw new Error('Wallet not initialized');
-    }
+  async signTransaction(tx) {
+    if (!this.keypair || !this.api) throw new Error('Wallet not ready');
 
     try {
-      this.logger.info('Creating and signing transaction...');
+      this.logger.info('Signing transaction...');
 
-      // Get account nonce
       const nonce = await this.api.rpc.system.accountNextIndex(this.keypair.address);
+      const transfer = this.api.tx.balances.transferKeepAlive(tx.to, tx.amount);
+      const signed = await transfer.signAsync(this.keypair, { nonce });
+      const hex = signed.toHex();
 
-      // Create transfer extrinsic
-      const transfer = this.api.tx.balances.transferKeepAlive(
-        transaction.to,
-        transaction.amount
-      );
+      this.logger.success('Signed');
+      this.logger.info(`Tx: ${hex.slice(0, 20)}...${hex.slice(-20)}`);
 
-      // Sign the transaction
-      const signedTx = await transfer.signAsync(this.keypair, { nonce });
-
-      // Get the hex-encoded signed transaction
-      const signedHex = signedTx.toHex();
-
-      this.logger.success('Transaction signed successfully');
-      this.logger.info(`Signed transaction: ${signedHex.slice(0, 20)}...${signedHex.slice(-20)}`);
-
-      return signedHex;
+      return hex;
     } catch (error) {
-      this.logger.error(`Transaction signing failed: ${error.message}`);
+      this.logger.error(`Signing failed: ${error.message}`);
       throw error;
     }
   }
