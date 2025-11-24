@@ -37,7 +37,7 @@ pub async fn verify(
     Json(payload): Json<VerifyRequest>,
 ) -> FacilitatorResult<Json<VerifyResponse>> {
     info!(
-        "🔍 VERIFY REQUEST - amount={}, recipient={}",
+        "Verify request - amount={}, recipient={}",
         payload.expected_amount, payload.expected_recipient
     );
 
@@ -51,7 +51,7 @@ pub async fn verify(
         .await
     {
         Ok(()) => {
-            info!("✅ Transaction verified successfully");
+            info!("Transaction verified successfully");
             Ok(Json(VerifyResponse {
                 valid: true,
                 message: "Transaction verified successfully".to_string(),
@@ -71,7 +71,7 @@ pub async fn settle(
     State(state): State<AppState>,
     Json(payload): Json<SettleRequest>,
 ) -> FacilitatorResult<(StatusCode, Json<SettleResponse>)> {
-    info!("💸 SETTLE REQUEST for transaction");
+    info!("Settle request for transaction");
 
     match state
         .polkadot_client
@@ -79,8 +79,7 @@ pub async fn settle(
         .await
     {
         Ok(tx_hash) => {
-            info!("🚀 TRANSACTION SETTLED - Hash: {}", tx_hash);
-            info!("🔗 View in Explorer: https://paseo.subscan.io/extrinsic/{}", tx_hash);
+            info!("Transaction settled - Hash: {}", tx_hash);
             Ok((
                 StatusCode::OK,
                 Json(SettleResponse {

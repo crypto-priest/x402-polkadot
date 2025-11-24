@@ -16,8 +16,6 @@ class Logger {
       this.logElement.appendChild(logEntry);
       this.logElement.scrollTop = this.logElement.scrollHeight;
     }
-
-    console.log(`[${type.toUpperCase()}]`, message);
   }
 
   info(message) {

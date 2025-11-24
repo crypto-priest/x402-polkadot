@@ -53,8 +53,7 @@ pub async fn paid(
 
             match verify_and_settle_payment(&state, &payment_header.transaction).await {
                 Ok(tx_hash) => {
-                    info!("✅ PAYMENT SUCCESSFUL - Transaction Hash: {}", tx_hash);
-                    info!("🔗 View in Explorer: https://paseo.subscan.io/extrinsic/{}", tx_hash);
+                    info!("Payment successful - Transaction Hash: {}", tx_hash);
                     Ok((
                         StatusCode::OK,
                         Json(PaidResponse {
@@ -113,7 +112,6 @@ async fn verify_and_settle_payment(
         .settle_payment(transaction)
         .await?;
 
-    info!("💰 Payment settled successfully - TX Hash: {}", tx_hash);
-    info!("🔗 Explorer: https://paseo.subscan.io/extrinsic/{}", tx_hash);
+    info!("Payment settled successfully - TX Hash: {}", tx_hash);
     Ok(tx_hash)
 }

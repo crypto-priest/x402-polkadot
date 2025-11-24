@@ -40,6 +40,12 @@ class WalletService {
       // Fetch initial balance
       await this.fetchBalance();
 
+      // Fetch receiver balance
+      const receiverAddress = document.getElementById('receiver-address')?.textContent;
+      if (receiverAddress) {
+        await this.fetchReceiverBalance(receiverAddress);
+      }
+
       return {
         address: this.keypair.address,
         meta: { name: 'Mnemonic Account' }
@@ -74,7 +80,7 @@ class WalletService {
 
       const walletAddressEl = document.getElementById('wallet-address');
       if (walletAddressEl) {
-        walletAddressEl.textContent = this.formatAddress(this.keypair.address);
+        walletAddressEl.textContent = this.keypair.address;
       }
 
       this.logger.success(`Balance: ${dotBalanceFormatted}`);
@@ -83,6 +89,46 @@ class WalletService {
       const dotBalanceEl = document.getElementById('dot-balance');
       if (dotBalanceEl) {
         dotBalanceEl.textContent = 'Error';
+      }
+    }
+  }
+
+  async getBalanceForAddress(address) {
+    if (!this.api) {
+      throw new Error('Wallet not initialized');
+    }
+
+    try {
+      const { data: balance } = await this.api.query.system.account(address);
+      const dotBalance = (balance.free.toBigInt() / BigInt(10**10)).toString();
+      return `${dotBalance} PAS`;
+    } catch (error) {
+      this.logger.error(`Failed to fetch balance for ${address}: ${error.message}`);
+      return 'Error';
+    }
+  }
+
+  async fetchReceiverBalance(address) {
+    if (!this.api) {
+      this.logger.error('Wallet not initialized');
+      return;
+    }
+
+    try {
+      this.logger.info('Fetching receiver balance...');
+      const balance = await this.getBalanceForAddress(address);
+
+      const receiverBalanceEl = document.getElementById('receiver-balance');
+      if (receiverBalanceEl) {
+        receiverBalanceEl.textContent = balance;
+      }
+
+      this.logger.success(`Receiver balance: ${balance}`);
+    } catch (error) {
+      this.logger.error(`Failed to fetch receiver balance: ${error.message}`);
+      const receiverBalanceEl = document.getElementById('receiver-balance');
+      if (receiverBalanceEl) {
+        receiverBalanceEl.textContent = 'Error';
       }
     }
   }
