@@ -2,20 +2,6 @@
 
 A demo implementation of the x402 payment protocol for Polkadot.
 
-## Overview
-
-```
-  Client          Server         Facilitator       Polkadot
-  (5173)          (3000)           (8080)          Network
-    │               │                │                │
-    │───Request────>│───Verify──────>│                │
-    │               │<──Valid────────│                │
-    │               │───Settle──────>│───Submit──────>│
-    │               │                │<──Confirmed────│
-    │               │<──Settled──────│                │
-    │<──Response────│                │                │
-```
-
 ## Payment Flow
 
 ```mermaid
