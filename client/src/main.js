@@ -70,6 +70,32 @@ function updateWalletUI(connected) {
   logger.info('Wallet UI updated');
 }
 
+function showReceiverInfo(recipient) {
+  const receiverSection = document.getElementById('receiver-section');
+  const receiverBalanceSection = document.getElementById('receiver-balance-section');
+  const receiverAddress = document.getElementById('receiver-address');
+  const receiverExplorerLink = document.getElementById('receiver-explorer-link');
+
+  if (receiverSection && receiverAddress) {
+    receiverAddress.textContent = recipient;
+    receiverSection.classList.remove('hidden');
+  }
+
+  if (receiverExplorerLink) {
+    receiverExplorerLink.href = `https://paseo.subscan.io/account/${recipient}`;
+    receiverExplorerLink.style.display = 'inline';
+  }
+
+  if (receiverBalanceSection) {
+    receiverBalanceSection.classList.remove('hidden');
+  }
+
+  // Fetch receiver balance if wallet is connected
+  if (walletService.isConnected()) {
+    walletService.fetchReceiverBalance(recipient);
+  }
+}
+
 function showResult(elementId, data, type = 'info') {
   const element = document.getElementById(elementId);
   if (!element) {
@@ -128,6 +154,9 @@ async function testPaid() {
       logger.warning('Payment required - Auto-processing payment');
       currentPaymentRequirements = response.data.paymentRequirements;
       showResult('paid-result', response.data, 'info');
+
+      // Show receiver info dynamically from payment requirements
+      showReceiverInfo(currentPaymentRequirements.recipient);
 
       await showAutoPaymentWarning(currentPaymentRequirements);
     } else {
@@ -234,8 +263,9 @@ async function autoProcessPayment(requirements, popup) {
       setTimeout(async () => {
         popup.remove();
         await walletService.fetchBalance();
+        const receiverSection = document.getElementById('receiver-section');
         const receiverAddress = document.getElementById('receiver-address')?.textContent;
-        if (receiverAddress) {
+        if (receiverSection && !receiverSection.classList.contains('hidden') && receiverAddress && receiverAddress !== '--') {
           await walletService.fetchReceiverBalance(receiverAddress);
         }
         logger.success('Balances updated');
@@ -331,8 +361,10 @@ document.getElementById('load-wallet-btn').addEventListener('click', connectWall
 document.getElementById('refresh-balance-btn').addEventListener('click', async () => {
   if (walletService.isConnected()) {
     await walletService.fetchBalance();
+    const receiverSection = document.getElementById('receiver-section');
     const receiverAddress = document.getElementById('receiver-address')?.textContent;
-    if (receiverAddress) {
+    // Only fetch receiver balance if receiver section is visible and has valid address
+    if (receiverSection && !receiverSection.classList.contains('hidden') && receiverAddress && receiverAddress !== '--') {
       await walletService.fetchReceiverBalance(receiverAddress);
     }
   } else {

@@ -284,6 +284,26 @@ h4 {
     font-family: monospace;
 }
 
+/* Explorer Link */
+.explorer-link {
+    display: inline-block;
+    margin-left: 12px;
+    padding: 4px 12px;
+    background: var(--seaweed);
+    color: var(--white) !important;
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    transition: all 0.2s;
+}
+
+.explorer-link:hover {
+    background: var(--seaweed-light);
+    transform: translateY(-1px);
+}
+
 /* Sidebar - Logs */
 .logs {
     background: var(--white);

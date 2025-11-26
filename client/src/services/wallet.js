@@ -1,6 +1,7 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import { Keyring } from '@polkadot/keyring';
 import { cryptoWaitReady } from '@polkadot/util-crypto';
+import { findHealthyNode, getNetworkConfig } from '../config/networks.js';
 
 class WalletService {
   constructor(logger) {
@@ -8,6 +9,7 @@ class WalletService {
     this.keypair = null;
     this.api = null;
     this.network = import.meta.env.VITE_POLKADOT_NETWORK || 'paseo';
+    this.currentNode = null;
   }
 
   async connect() {
@@ -24,20 +26,18 @@ class WalletService {
       const keyring = new Keyring({ type: 'sr25519' });
       this.keypair = keyring.addFromMnemonic(mnemonic);
 
-      const rpcUrl = this.getRpcUrl();
-      this.logger.info(`Connecting to ${this.network}`);
+      // Find healthy node with automatic failover
+      this.currentNode = await findHealthyNode(this.network, this.logger);
+      const networkConfig = getNetworkConfig(this.network);
 
-      const provider = new WsProvider(rpcUrl);
+      this.logger.info(`Connecting to ${networkConfig.name}`);
+
+      const provider = new WsProvider(this.currentNode.url);
       this.api = await ApiPromise.create({ provider });
 
       this.logger.success(`Connected: ${this.formatAddress(this.keypair.address)}`);
 
       await this.fetchBalance();
-
-      const receiverAddr = document.getElementById('receiver-address')?.textContent;
-      if (receiverAddr) {
-        await this.fetchReceiverBalance(receiverAddr);
-      }
 
       return { address: this.keypair.address };
     } catch (error) {
@@ -101,13 +101,8 @@ class WalletService {
     }
   }
 
-  getRpcUrl() {
-    const rpcUrls = {
-      paseo: 'wss://paseo.rpc.amforc.com',
-      westend: 'wss://westend-rpc.polkadot.io',
-      polkadot: 'wss://rpc.polkadot.io'
-    };
-    return rpcUrls[this.network] || rpcUrls.paseo;
+  getCurrentNode() {
+    return this.currentNode;
   }
 
   async signTransaction(tx) {
