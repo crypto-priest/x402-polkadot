@@ -51,24 +51,18 @@ export async function checkNodeHealth(url, timeout = 5000) {
   });
 }
 
-// Find the first healthy node from the list
-export async function findHealthyNode(networkId, logger) {
+// Find the first healthy node from the list (silently)
+export async function findHealthyNode(networkId) {
   const network = networks[networkId];
   if (!network) {
     throw new Error(`Unknown network: ${networkId}`);
   }
 
-  logger?.info(`Finding healthy node for ${network.name}...`);
-
   for (const node of network.nodes) {
-    logger?.info(`Checking ${node.name}...`);
     const isHealthy = await checkNodeHealth(node.url);
-
     if (isHealthy) {
-      logger?.success(`Using ${node.name}`);
       return node;
     }
-    logger?.warn(`${node.name} is down`);
   }
 
   throw new Error(`No healthy nodes found for ${network.name}`);

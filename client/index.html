@@ -19,7 +19,7 @@
                 <div class="server-info">
                     <div class="info-row-inline">
                         <label for="api-url">API Base URL:</label>
-                        <input type="text" id="api-url" value="http://localhost:3000" readonly />
+                        <input type="text" id="api-url" readonly />
                     </div>
                     <div class="detected-network">
                         <label>Network:</label>
@@ -65,31 +65,26 @@
             </section>
 
             <section class="wallet-section">
-                <h2>3. Wallet Configuration</h2>
+                <h2>3. Wallet</h2>
                 <div class="wallet-info">
                     <div class="info-row">
-                        <label>Your Wallet:</label>
-                        <span id="wallet-address">Not loaded</span>
+                        <label>Mnemonic:</label>
+                        <span id="wallet-mnemonic" style="font-size: 12px; word-break: break-all;">--</span>
                     </div>
                     <div class="info-row">
-                        <label>Your Balance:</label>
+                        <label>Address:</label>
+                        <span id="wallet-address">--</span>
+                    </div>
+                    <div class="info-row">
+                        <label>Balance:</label>
                         <span id="dot-balance">--</span>
                     </div>
                     <div class="info-row hidden" id="receiver-section">
-                        <label>Receiver Wallet:</label>
+                        <label>Receiver:</label>
                         <span id="receiver-address">--</span>
                         <a href="#" id="receiver-explorer-link" class="explorer-link" target="_blank" style="display: none;">View on Explorer →</a>
                     </div>
-                    <div class="info-row hidden" id="receiver-balance-section">
-                        <label>Receiver Balance:</label>
-                        <span id="receiver-balance">--</span>
-                    </div>
-                    <div class="info-row">
-                        <label>RPC Endpoint:</label>
-                        <span id="rpc-endpoint">wss://rpc.ibp.network/paseo</span>
-                    </div>
-                    <button class="test-btn" id="load-wallet-btn">Load Wallet from .env</button>
-                    <button class="test-btn" id="refresh-balance-btn" style="margin-left: 10px;">Refresh Balance</button>
+                    <button class="test-btn" id="refresh-btn">Refresh</button>
                 </div>
             </section>
         </div>

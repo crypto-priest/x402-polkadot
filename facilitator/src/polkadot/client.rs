@@ -1,33 +1,39 @@
 use crate::error::{FacilitatorError, FacilitatorResult};
+use crate::polkadot::networks::{find_healthy_node, NetworkConfig};
 use crate::polkadot::types::{TransactionData, ValidationParams};
 use crate::polkadot::validator::TransactionValidator;
 use serde_json;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use subxt::{OnlineClient, PolkadotConfig};
 use subxt_signer::sr25519::Keypair;
 
 pub struct PolkadotClient {
-    rpc_url: String,
     network: String,
+    network_config: NetworkConfig,
     connected: Arc<RwLock<bool>>,
+    current_rpc: Arc<RwLock<Option<String>>>,
     api: Arc<RwLock<Option<OnlineClient<PolkadotConfig>>>>,
     signer: Option<Keypair>,
 }
 
 impl PolkadotClient {
-    pub async fn new(rpc_url: String, network: String, _signer_seed: Option<String>) -> FacilitatorResult<Self> {
+    pub async fn new(_rpc_url: String, network: String, _signer_seed: Option<String>) -> FacilitatorResult<Self> {
         info!("Initializing Polkadot client for network: {}", network);
         info!("Mode: Broadcast only (signing done in frontend)");
 
+        let network_config = NetworkConfig::from_network_name(&network);
+        info!("Loaded {} RPC endpoints for {}", network_config.nodes.len(), network_config.name);
+
         let client = Self {
-            rpc_url: rpc_url.clone(),
             network,
+            network_config,
             connected: Arc::new(RwLock::new(false)),
+            current_rpc: Arc::new(RwLock::new(None)),
             api: Arc::new(RwLock::new(None)),
-            signer: None, // No signer needed - frontend signs
+            signer: None,
         };
 
         client.connect().await?;
@@ -35,17 +41,31 @@ impl PolkadotClient {
     }
 
     async fn connect(&self) -> FacilitatorResult<()> {
-        info!("Connecting to Polkadot RPC: {}", self.rpc_url);
+        // Find a healthy node
+        let node = find_healthy_node(&self.network_config).await
+            .ok_or_else(|| FacilitatorError::PolkadotRpcError("No healthy RPC nodes available".to_string()))?;
 
-        // Establish real Subxt connection
-        let api = OnlineClient::<PolkadotConfig>::from_url(&self.rpc_url)
+        info!("Connecting to Polkadot RPC: {}", node.url);
+
+        let api = OnlineClient::<PolkadotConfig>::from_url(&node.url)
             .await
             .map_err(|e| FacilitatorError::PolkadotRpcError(format!("Failed to connect: {}", e)))?;
 
         *self.api.write().await = Some(api);
+        *self.current_rpc.write().await = Some(node.url.clone());
         *self.connected.write().await = true;
-        info!("Successfully connected to Polkadot network");
+        info!("Successfully connected to Polkadot network via {}", node.name);
         Ok(())
+    }
+
+    /// Ensure we have a healthy connection, reconnect if needed
+    pub async fn ensure_connected(&self) -> FacilitatorResult<()> {
+        if self.is_connected().await {
+            return Ok(());
+        }
+
+        warn!("Connection lost, attempting to reconnect...");
+        self.connect().await
     }
 
     pub async fn is_connected(&self) -> bool {
@@ -58,11 +78,8 @@ impl PolkadotClient {
         expected_amount: u128,
         expected_recipient: &str,
     ) -> FacilitatorResult<()> {
-        if !self.is_connected().await {
-            return Err(FacilitatorError::PolkadotRpcError(
-                "Not connected to Polkadot network".to_string(),
-            ));
-        }
+        // Ensure we have a healthy connection
+        self.ensure_connected().await?;
 
         let tx_hex = transaction.trim_start_matches("0x");
         if hex::decode(tx_hex).is_err() {
@@ -78,11 +95,8 @@ impl PolkadotClient {
     pub async fn submit_transaction(&self, transaction: &str) -> FacilitatorResult<String> {
         info!("Broadcasting signed transaction");
 
-        if !self.is_connected().await {
-            return Err(FacilitatorError::PolkadotRpcError(
-                "Not connected to Polkadot network".to_string(),
-            ));
-        }
+        // Ensure we have a healthy connection
+        self.ensure_connected().await?;
 
         let api_guard = self.api.read().await;
         let api = api_guard.as_ref().ok_or_else(|| {

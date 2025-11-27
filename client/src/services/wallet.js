@@ -1,7 +1,7 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import { Keyring } from '@polkadot/keyring';
 import { cryptoWaitReady } from '@polkadot/util-crypto';
-import { findHealthyNode, getNetworkConfig } from '../config/networks.js';
+import { findHealthyNode } from '../config/networks.js';
 
 class WalletService {
   constructor(logger) {
@@ -14,34 +14,27 @@ class WalletService {
 
   async connect() {
     try {
-      this.logger.info('Loading wallet...');
-
       await cryptoWaitReady();
 
       const mnemonic = import.meta.env.VITE_SIGNER_MNEMONIC;
       if (!mnemonic) {
-        throw new Error('Mnemonic not found in .env');
+        throw new Error('Mnemonic not configured');
       }
 
       const keyring = new Keyring({ type: 'sr25519' });
       this.keypair = keyring.addFromMnemonic(mnemonic);
 
-      // Find healthy node with automatic failover
-      this.currentNode = await findHealthyNode(this.network, this.logger);
-      const networkConfig = getNetworkConfig(this.network);
-
-      this.logger.info(`Connecting to ${networkConfig.name}`);
+      // Find healthy node silently
+      this.currentNode = await findHealthyNode(this.network);
 
       const provider = new WsProvider(this.currentNode.url);
       this.api = await ApiPromise.create({ provider });
-
-      this.logger.success(`Connected: ${this.formatAddress(this.keypair.address)}`);
 
       await this.fetchBalance();
 
       return { address: this.keypair.address };
     } catch (error) {
-      this.logger.error(`Failed: ${error.message}`);
+      this.logger.error(`Connection failed: ${error.message}`);
       throw error;
     }
   }
@@ -50,8 +43,6 @@ class WalletService {
     if (!this.keypair || !this.api) return;
 
     try {
-      this.logger.info('Fetching balance...');
-
       const { data: balance } = await this.api.query.system.account(this.keypair.address);
       const amount = (balance.free.toBigInt() / BigInt(10**10)).toString();
       const formatted = `${amount} PAS`;
@@ -61,10 +52,7 @@ class WalletService {
 
       const addressEl = document.getElementById('wallet-address');
       if (addressEl) addressEl.textContent = this.keypair.address;
-
-      this.logger.success(`Balance: ${formatted}`);
     } catch (error) {
-      this.logger.error(`Balance fetch failed: ${error.message}`);
       const el = document.getElementById('dot-balance');
       if (el) el.textContent = 'Error';
     }
@@ -78,7 +66,6 @@ class WalletService {
       const amount = (balance.free.toBigInt() / BigInt(10**10)).toString();
       return `${amount} PAS`;
     } catch (error) {
-      this.logger.error(`Balance fetch failed: ${error.message}`);
       return 'Error';
     }
   }
@@ -87,15 +74,11 @@ class WalletService {
     if (!this.api) return;
 
     try {
-      this.logger.info('Fetching receiver balance...');
       const balance = await this.getBalanceForAddress(address);
 
       const el = document.getElementById('receiver-balance');
       if (el) el.textContent = balance;
-
-      this.logger.success(`Receiver: ${balance}`);
     } catch (error) {
-      this.logger.error(`Receiver balance failed: ${error.message}`);
       const el = document.getElementById('receiver-balance');
       if (el) el.textContent = 'Error';
     }
@@ -109,15 +92,10 @@ class WalletService {
     if (!this.keypair || !this.api) throw new Error('Wallet not ready');
 
     try {
-      this.logger.info('Signing transaction...');
-
       const nonce = await this.api.rpc.system.accountNextIndex(this.keypair.address);
       const transfer = this.api.tx.balances.transferKeepAlive(tx.to, tx.amount);
       const signed = await transfer.signAsync(this.keypair, { nonce });
       const hex = signed.toHex();
-
-      this.logger.success('Signed');
-      this.logger.info(`Tx: ${hex.slice(0, 20)}...${hex.slice(-20)}`);
 
       return hex;
     } catch (error) {

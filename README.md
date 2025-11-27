@@ -30,9 +30,12 @@ sequenceDiagram
 
 ## Live Demo
 
-- **Client**: https://x402-client.fly.dev
-- **Server**: https://server-bold-dream-4447.fly.dev
-- **Facilitator**: https://facilitator.fly.dev
+
+| Service | URL |
+|---------|-----|
+| Client | https://x402-client.fly.dev |
+| Server | https://server-bold-dream-4447.fly.dev |
+| Facilitator | https://facilitator.fly.dev |
 
 ## Quick Start
 

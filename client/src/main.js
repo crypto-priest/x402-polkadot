@@ -3,7 +3,8 @@ import WalletService from './services/wallet.js';
 import APIService from './services/api.js';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:3000';
-const POLKADOT_NETWORK = import.meta.env.VITE_POLKADOT_NETWORK || 'westend';
+const POLKADOT_NETWORK = import.meta.env.VITE_POLKADOT_NETWORK || 'paseo';
+const MNEMONIC = import.meta.env.VITE_SIGNER_MNEMONIC || '';
 
 const logger = new Logger('log-container');
 const walletService = new WalletService(logger);
@@ -66,13 +67,22 @@ function showNotification(msg, type = 'error') {
   }, 3000);
 }
 
-function updateWalletUI(connected) {
-  logger.info('Wallet UI updated');
+function updateUIFromEnv() {
+  // Show mnemonic
+  const mnemonicEl = document.getElementById('wallet-mnemonic');
+  if (mnemonicEl && MNEMONIC) {
+    mnemonicEl.textContent = MNEMONIC;
+  }
+
+  // Show server URL in the config section
+  const apiUrlEl = document.getElementById('api-url');
+  if (apiUrlEl) {
+    apiUrlEl.value = SERVER_URL;
+  }
 }
 
 function showReceiverInfo(recipient) {
   const receiverSection = document.getElementById('receiver-section');
-  const receiverBalanceSection = document.getElementById('receiver-balance-section');
   const receiverAddress = document.getElementById('receiver-address');
   const receiverExplorerLink = document.getElementById('receiver-explorer-link');
 
@@ -84,15 +94,6 @@ function showReceiverInfo(recipient) {
   if (receiverExplorerLink) {
     receiverExplorerLink.href = `https://paseo.subscan.io/account/${recipient}`;
     receiverExplorerLink.style.display = 'inline';
-  }
-
-  if (receiverBalanceSection) {
-    receiverBalanceSection.classList.remove('hidden');
-  }
-
-  // Fetch receiver balance if wallet is connected
-  if (walletService.isConnected()) {
-    walletService.fetchReceiverBalance(recipient);
   }
 }
 
@@ -107,24 +108,37 @@ function showResult(elementId, data, type = 'info') {
 }
 
 async function connectWallet() {
-  const btn = document.getElementById('load-wallet-btn');
-  const originalText = btn.textContent;
+  try {
+    await walletService.connect();
+    logger.success('Wallet connected');
+  } catch (error) {
+    logger.error(`Connection failed: ${error.message}`);
+    showNotification(error.message, 'error');
+  }
+}
+
+async function refresh() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing...';
 
   try {
-    btn.disabled = true;
-    btn.textContent = 'Loading...';
-    logger.info('Loading wallet...');
+    // Reload env values to UI
+    updateUIFromEnv();
 
-    await walletService.connect();
-    updateWalletUI(true);
+    // Reconnect wallet and fetch balance
+    if (!walletService.isConnected()) {
+      await connectWallet();
+    } else {
+      await walletService.fetchBalance();
+    }
 
-    btn.textContent = 'Wallet Loaded';
-    logger.success('Wallet loaded successfully');
+    logger.success('Refreshed');
   } catch (error) {
+    logger.error(`Refresh failed: ${error.message}`);
+  } finally {
     btn.disabled = false;
-    btn.textContent = originalText;
-    logger.error(`Wallet load failed: ${error.message}`);
-    showNotification(error.message, 'error');
+    btn.textContent = 'Refresh';
   }
 }
 
@@ -151,7 +165,7 @@ async function testPaid() {
     const response = await apiService.paid();
 
     if (response.status === 402) {
-      logger.warning('Payment required - Auto-processing payment');
+      logger.warning('Payment required');
       currentPaymentRequirements = response.data.paymentRequirements;
       showResult('paid-result', response.data, 'info');
 
@@ -170,7 +184,7 @@ async function testPaid() {
 async function showAutoPaymentWarning(requirements) {
   if (!walletService.isConnected()) {
     logger.error('Wallet not connected');
-    showNotification('Please load wallet first!', 'error');
+    showNotification('Wallet not connected!', 'error');
     return;
   }
 
@@ -221,38 +235,30 @@ function updatePaymentStatus(status, done = false, err = false) {
 
 async function autoProcessPayment(requirements, popup) {
   try {
-    updatePaymentStatus('1. Signing transaction with wallet...');
-    logger.info('Auto-signing transaction');
+    updatePaymentStatus('Signing transaction...');
+    logger.info('Signing transaction');
 
     const signedTxHex = await walletService.signTransaction({
       to: requirements.recipient,
       amount: requirements.amount,
     });
 
-    updatePaymentStatus('2. Transaction signed successfully');
-    updatePaymentStatus('3. Sending signed transaction in X-PAYMENT header');
-    logger.info('Submitting payment to server');
+    updatePaymentStatus('Transaction signed');
+    updatePaymentStatus('Submitting to server...');
+    logger.info('Submitting payment');
 
     const response = await apiService.paid(signedTxHex);
 
     if (response.ok) {
-      updatePaymentStatus('4. API request submitted to server');
-      updatePaymentStatus('5. Server verifying transaction...');
-      updatePaymentStatus('6. Submitting to Paseo blockchain...');
-      updatePaymentStatus('7. Waiting for block finalization...');
+      updatePaymentStatus('Verifying on blockchain...');
+      updatePaymentStatus('Waiting for confirmation...');
 
       await new Promise(resolve => setTimeout(resolve, 500));
-      updatePaymentStatus('8. Transaction included in block');
+      updatePaymentStatus('Transaction confirmed', true);
 
-      await new Promise(resolve => setTimeout(resolve, 500));
-      updatePaymentStatus('9. Transaction finalized on-chain', true);
-
-      logger.success('Payment successful - Access granted');
-      logger.info(`Transaction Hash: ${response.data.transaction_hash}`);
-      logger.info(`Block Hash: ${response.data.block_hash}`);
+      logger.success('Payment successful');
+      logger.info(`Tx: ${response.data.transaction_hash}`);
       showResult('paid-result', response.data, 'success');
-
-      localStorage.setItem('walletWasLoaded', 'true');
 
       setTimeout(async () => {
         popup.style.borderColor = '#4caf50';
@@ -263,12 +269,7 @@ async function autoProcessPayment(requirements, popup) {
       setTimeout(async () => {
         popup.remove();
         await walletService.fetchBalance();
-        const receiverSection = document.getElementById('receiver-section');
-        const receiverAddress = document.getElementById('receiver-address')?.textContent;
-        if (receiverSection && !receiverSection.classList.contains('hidden') && receiverAddress && receiverAddress !== '--') {
-          await walletService.fetchReceiverBalance(receiverAddress);
-        }
-        logger.success('Balances updated');
+        logger.success('Balance updated');
       }, 3000);
     } else {
       updatePaymentStatus('Payment failed', false, true);
@@ -286,33 +287,18 @@ async function autoProcessPayment(requirements, popup) {
   }
 }
 
-function showPaymentRequirements(requirements) {
-  const container = document.getElementById('payment-requirements');
-  const details = document.getElementById('payment-details');
-
-  const amountInDOT = (requirements.amount / 10_000_000_000).toFixed(4);
-
-  details.innerHTML = `
-    <p><strong>Amount:</strong> ${amountInDOT} ${requirements.currency} (${requirements.amount} plancks)</p>
-    <p><strong>Recipient:</strong> ${walletService.formatAddress(requirements.recipient)}</p>
-    <p><strong>Network:</strong> ${requirements.network}</p>
-  `;
-
-  container.classList.remove('hidden');
-}
-
 async function payAndRetry() {
   const btn = document.getElementById('pay-btn');
   const originalText = btn.textContent;
 
   if (!currentPaymentRequirements) {
-    logger.error('No payment requirements found');
+    logger.error('No payment requirements');
     return;
   }
 
   if (!walletService.isConnected()) {
-    logger.error('Wallet not connected. Please load wallet first.');
-    showNotification('Please load wallet first!', 'error');
+    logger.error('Wallet not connected');
+    showNotification('Wallet not connected!', 'error');
     return;
   }
 
@@ -327,13 +313,13 @@ async function payAndRetry() {
     });
 
     btn.textContent = 'Submitting...';
-    logger.info('Submitting payment to server');
+    logger.info('Submitting payment');
 
     const response = await apiService.paid(signedTxHex);
 
     if (response.ok) {
-      logger.success('Payment successful - Access granted');
-      logger.info(`Transaction Hash: ${response.data.transaction_hash}`);
+      logger.success('Payment successful');
+      logger.info(`Tx: ${response.data.transaction_hash}`);
       showResult('paid-result', response.data, 'success');
       document.getElementById('payment-requirements').classList.add('hidden');
       currentPaymentRequirements = null;
@@ -354,41 +340,29 @@ async function payAndRetry() {
 
 function clearLogs() {
   logger.clear();
-  logger.info('Application initialized');
+  logger.info('Ready');
 }
 
-document.getElementById('load-wallet-btn').addEventListener('click', connectWallet);
-document.getElementById('refresh-balance-btn').addEventListener('click', async () => {
-  if (walletService.isConnected()) {
-    await walletService.fetchBalance();
-    const receiverSection = document.getElementById('receiver-section');
-    const receiverAddress = document.getElementById('receiver-address')?.textContent;
-    // Only fetch receiver balance if receiver section is visible and has valid address
-    if (receiverSection && !receiverSection.classList.contains('hidden') && receiverAddress && receiverAddress !== '--') {
-      await walletService.fetchReceiverBalance(receiverAddress);
-    }
-  } else {
-    logger.error('Wallet not connected. Load wallet first.');
-  }
-});
+// Event listeners
+document.getElementById('refresh-btn').addEventListener('click', refresh);
 document.getElementById('test-health-btn').addEventListener('click', testHealth);
 document.getElementById('test-free-btn').addEventListener('click', testFree);
 document.getElementById('test-paid-btn').addEventListener('click', testPaid);
 document.getElementById('pay-btn').addEventListener('click', payAndRetry);
 document.getElementById('clear-logs-btn').addEventListener('click', clearLogs);
 
-logger.info('Application initialized');
-logger.info(`Server URL: ${SERVER_URL}`);
-logger.info(`Network: ${POLKADOT_NETWORK}`);
+// Initialize on page load
+logger.info('Ready');
 
-if (localStorage.getItem('walletWasLoaded') === 'true') {
-  logger.info('Auto-loading wallet from previous session');
-  showPageLoader('Loading Wallet');
-  setTimeout(async () => {
-    try {
-      await connectWallet();
-    } finally {
-      hidePageLoader();
-    }
-  }, 1000);
-}
+// Show env values in UI
+updateUIFromEnv();
+
+// Auto-connect wallet on page load
+showPageLoader('Connecting...');
+setTimeout(async () => {
+  try {
+    await connectWallet();
+  } finally {
+    hidePageLoader();
+  }
+}, 500);
